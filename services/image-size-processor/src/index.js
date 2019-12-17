@@ -11,7 +11,7 @@ const run = async () => {
   const client = await mongodb.connect();
   log(`BaseCMS DB connected to ${client.s.url}`);
 
-  const tenants = await loadTenants();
+  const tenants = await loadTenants({ mongodb });
   log(tenants);
 
   await mongodb.close(true);

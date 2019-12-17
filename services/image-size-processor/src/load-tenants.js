@@ -1,6 +1,4 @@
-const mongodb = require('./mongodb');
-
-module.exports = async () => {
+module.exports = async ({ mongodb } = {}) => {
   const admin = await mongodb.admin();
   const { databases } = await admin.listDatabases({ nameOnly: true });
   return databases
