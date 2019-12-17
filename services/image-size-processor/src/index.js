@@ -1,5 +1,6 @@
 const mongodb = require('./mongodb');
 const loadTenants = require('./load-tenants');
+const collStatsFor = require('./coll-stats-for');
 
 const { log } = console;
 
@@ -12,7 +13,10 @@ const run = async () => {
   log(`BaseCMS DB connected to ${client.s.url}`);
 
   const tenants = await loadTenants({ mongodb });
-  log(tenants);
+
+  const r = await Promise.all(tenants.map(async tenant => collStatsFor({ mongodb, tenant })));
+
+  log(r);
 
   await mongodb.close(true);
   log('DONE!');
