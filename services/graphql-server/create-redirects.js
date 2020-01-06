@@ -78,51 +78,28 @@ const buildWebsiteProductRedirects = async (siteId) => {
   return redirects;
 };
 
-const buildContentRedirects = async () => {
-  log('Retrieving content redirects...');
+const buildContentAliasRedirects = async () => {
+  log('Retrieving content alias redirects...');
   const contentColl = await basedb.collection('platform', 'Content');
-  const sectionIds = await contentColl.distinct('mutations.Website.primarySection.$id', {
-    'mutations.Website.redirects.0': { $exists: true },
-  });
-  log('Getting primarySection references...');
-
-  const load = await getPrimarySectionLoader(sectionIds);
-  log('Primary section references loaded.');
-
-  const context = { canonicalRules, load };
 
   const cursor = await contentColl.aggregate([
-    { $match: { 'mutations.Website.redirects.0': { $exists: true } } },
+    { $match: { 'mutations.Website.alias': { $exists: true } } },
     {
       $project: {
-        type: 1,
-        'mutations.Website.redirects': 1,
-        'mutations.Website.slug': 1,
-        'mutations.Website.primarySection': 1,
-      },
-    },
-    { $unwind: '$mutations.Website.redirects' },
-    {
-      $project: {
-        type: 1,
-        'mutations.Website.redirects': 1,
-        'mutations.Website.slug': 1,
-        'mutations.Website.primarySection': 1,
+        'mutations.Website.alias': 1,
       },
     },
   ]);
 
   const redirects = [];
-  await iterateCursor(cursor, async (doc) => {
+  await iterateCursor(cursor, (doc) => {
     if (typeof doc === 'object') {
-      const redirect = get(doc, 'mutations.Website.redirects');
-      const from = redirect;
-      const slug = get(doc, 'mutations.Website.slug');
-      const to = await canonicalPathFor({ slug, ...doc }, context);
+      const from = get(doc, 'mutations.Website.alias');
+      const to = `${doc._id}`;
       redirects.push({ from, to });
     }
   });
-  log(`Found ${redirects.length} content redirects.`);
+  log(`Found ${redirects.length} content alias redirects.`);
   return redirects;
 };
 
@@ -155,7 +132,7 @@ const run = async () => {
   const redirectGroups = await Promise.all([
     buildIssueRedirects(),
     buildSectionRedirects(),
-    buildContentRedirects(),
+    buildContentAliasRedirects(),
     buildWebsiteProductRedirects(site._id),
   ]);
 
