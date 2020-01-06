@@ -1,4 +1,6 @@
 const { iterateCursor } = require('@base-cms/db/utils');
+const { content: canonicalPathFor, requestParser: getCanonicalRules } = require('@base-cms/canonical-path');
+const { get } = require('@base-cms/object-path');
 const createDB = require('./src/basedb');
 
 const { log } = console;
@@ -11,6 +13,21 @@ const cleanPath = (value) => {
   if (!v) return v;
   if (/^http[s]?:\/\//.test(v)) return v;
   return `/${v.replace(/^\/+/, '')}`;
+};
+
+const canonicalRules = getCanonicalRules({ headers: {} });
+
+const getPrimarySectionLoader = async (ids) => {
+  const query = {
+    _id: { $in: ids },
+    status: 1,
+  };
+  const options = {
+    projection: { alias: 1 },
+  };
+  const sections = await basedb.find('website.Section', query, options);
+  const sectionMap = sections.reduce((map, section) => map.set(`${section._id}`, section), new Map());
+  return (_, id) => sectionMap.get(`${id}`);
 };
 
 const buildIssueRedirects = async () => {
@@ -61,6 +78,54 @@ const buildWebsiteProductRedirects = async (siteId) => {
   return redirects;
 };
 
+const buildContentRedirects = async () => {
+  log('Retrieving content redirects...');
+  const contentColl = await basedb.collection('platform', 'Content');
+  const sectionIds = await contentColl.distinct('mutations.Website.primarySection.$id', {
+    'mutations.Website.redirects.0': { $exists: true },
+  });
+  log('Getting primarySection references...');
+
+  const load = await getPrimarySectionLoader(sectionIds);
+  log('Primary section references loaded.');
+
+  const context = { canonicalRules, load };
+
+  const cursor = await contentColl.aggregate([
+    { $match: { 'mutations.Website.redirects.0': { $exists: true } } },
+    {
+      $project: {
+        type: 1,
+        'mutations.Website.redirects': 1,
+        'mutations.Website.slug': 1,
+        'mutations.Website.primarySection': 1,
+      },
+    },
+    { $unwind: '$mutations.Website.redirects' },
+    {
+      $project: {
+        type: 1,
+        'mutations.Website.redirects': 1,
+        'mutations.Website.slug': 1,
+        'mutations.Website.primarySection': 1,
+      },
+    },
+  ]);
+
+  const redirects = [];
+  await iterateCursor(cursor, async (doc) => {
+    if (typeof doc === 'object') {
+      const redirect = get(doc, 'mutations.Website.redirects');
+      const from = redirect;
+      const slug = get(doc, 'mutations.Website.slug');
+      const to = await canonicalPathFor({ slug, ...doc }, context);
+      redirects.push({ from, to });
+    }
+  });
+  log(`Found ${redirects.length} content redirects.`);
+  return redirects;
+};
+
 const run = async () => {
   const client = await basedb.client.connect();
   log(`BaseCMS DB connected to ${client.s.url} for ${basedb.tenant}`);
@@ -90,6 +155,7 @@ const run = async () => {
   const redirectGroups = await Promise.all([
     buildIssueRedirects(),
     buildSectionRedirects(),
+    buildContentRedirects(),
     buildWebsiteProductRedirects(site._id),
   ]);
 
