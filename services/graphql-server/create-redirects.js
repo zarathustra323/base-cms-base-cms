@@ -130,9 +130,9 @@ const run = async () => {
   log('New index created.');
 
   const redirectGroups = await Promise.all([
-    buildIssueRedirects(),
-    buildSectionRedirects(),
     buildContentAliasRedirects(),
+    buildSectionRedirects(),
+    buildIssueRedirects(),
     buildWebsiteProductRedirects(site._id),
   ]);
 
@@ -141,7 +141,16 @@ const run = async () => {
     .map(({ from, to }) => ({ from: cleanPath(from), to: cleanPath(to), siteId: site._id }))
     .filter(({ from, to }) => from && to);
 
-  log(redirects);
+  log('Beginning bulk write process...');
+  const bulkOps = redirects.map(({ from, to, siteId }) => ({
+    updateOne: {
+      filter: { siteId, from },
+      update: { $set: { siteId, from, to } },
+      upsert: true,
+    },
+  }));
+  await redirectsColl.bulkWrite(bulkOps);
+  log('Bulk write complete.');
 
   await basedb.close();
 };
