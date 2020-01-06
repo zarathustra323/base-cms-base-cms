@@ -49,6 +49,18 @@ const buildSectionRedirects = async () => {
   return redirects;
 };
 
+const buildWebsiteProductRedirects = async (siteId) => {
+  const site = await basedb.findById('platform.Product', siteId, { projection: { redirects: 1 } });
+
+  const redirects = [];
+  if (!site || !site.redirects || typeof site.redirects !== 'object') return redirects;
+  Object.keys(site.redirects).forEach((from) => {
+    redirects.push({ from, to: site.redirects[from] });
+  });
+  log(`Found ${redirects.length} site redirects.`);
+  return redirects;
+};
+
 const run = async () => {
   const client = await basedb.client.connect();
   log(`BaseCMS DB connected to ${client.s.url} for ${basedb.tenant}`);
@@ -78,6 +90,7 @@ const run = async () => {
   const redirectGroups = await Promise.all([
     buildIssueRedirects(),
     buildSectionRedirects(),
+    buildWebsiteProductRedirects(site._id),
   ]);
 
   const redirects = redirectGroups
